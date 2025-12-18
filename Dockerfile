@@ -8,7 +8,7 @@ RUN apk --no-cache add ca-certificates git \
 WORKDIR /app
 
 ARG CYBERCHEF_VERSION
-ENV CYBERCHEF_VERSION=10.18.3
+ENV CYBERCHEF_VERSION=10.19.4
 RUN echo "https://github.com/gchq/CyberChef/releases/download/v${CYBERCHEF_VERSION}/CyberChef_v${CYBERCHEF_VERSION}.zip"
 RUN git clone -b "v$CYBERCHEF_VERSION" --depth=1 https://github.com/gchq/CyberChef.git .
 
