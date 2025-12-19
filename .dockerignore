@@ -1,0 +1,8 @@
+node_modules
+build
+.git
+.github
+LICENSE
+*.md
+npm-debug.log*
+yarn-error.log*

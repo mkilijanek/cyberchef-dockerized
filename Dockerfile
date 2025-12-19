@@ -1,31 +1,23 @@
-FROM node:18-alpine 
+FROM node:18-alpine AS builder
 
-RUN apk --no-cache add ca-certificates git \
-  && apk update && apk --no-cache upgrade \
-  && apk --no-cache add curl wget unzip \
-  && rm -rf /var/cache/apk/*
+ARG CYBERCHEF_VERSION=10.19.4
+ENV CYBERCHEF_VERSION=${CYBERCHEF_VERSION}
+
+RUN apk add --no-cache git python3 make g++ ca-certificates \
+  && update-ca-certificates
 
 WORKDIR /app
 
-ARG CYBERCHEF_VERSION
-ENV CYBERCHEF_VERSION=10.19.4
-RUN git clone -b "v$CYBERCHEF_VERSION" --depth=1 https://github.com/gchq/CyberChef.git .
+RUN git clone -b "v${CYBERCHEF_VERSION}" --depth=1 https://github.com/gchq/CyberChef.git .
 
 ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN npm install
-#RUN npm audit fix --prod
+RUN npm ci
 RUN npx grunt prod
 
+FROM nginx:1.27-alpine
 
-#RUN cp CyberChef_v*.zip cyberchef.zip && ls -lh
-#RUN unzip cyberchef.zip && ls -lh \
-#  && rm cyberchef.zip
-#RUN Cyberchef*.html index.html
+COPY --from=builder /app/build/prod/ /usr/share/nginx/html
 
-RUN npm install http-server -g
-RUN mkdir -p /var/www/cyberchef
-RUN cp -r /app/build/prod/* /var/www/cyberchef
-#RUN http-server /var/www/cyberchef
-EXPOSE 8080
+EXPOSE 80
 
-CMD ["http-server", "/var/www/cyberchef", "-p", "8080"]
+CMD ["nginx", "-g", "daemon off;"]
