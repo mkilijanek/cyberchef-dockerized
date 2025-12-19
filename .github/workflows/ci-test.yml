@@ -32,7 +32,7 @@ jobs:
 
       - name: Start CyberChef container
         run: |
-          docker run -d --name cyberchef-test -p 8080:8080 cyberchef-test:latest
+          docker run -d --name cyberchef-test -p 8080:80 cyberchef-test:latest
           echo "Container started, waiting for it to be ready..."
 
       - name: Wait for container to be healthy
