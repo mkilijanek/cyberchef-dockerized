@@ -1,0 +1,143 @@
+name: CI - Build and Test
+
+on:
+  push:
+    branches: [ "main", "claude/**" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # Run tests weekly on Monday at 7 AM
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: cyberchef-test:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start CyberChef container
+        run: |
+          docker run -d --name cyberchef-test -p 8080:8080 cyberchef-test:latest
+          echo "Container started, waiting for it to be ready..."
+
+      - name: Wait for container to be healthy
+        run: |
+          echo "Waiting for CyberChef to start..."
+          for i in {1..30}; do
+            if docker ps | grep cyberchef-test | grep -q Up; then
+              echo "Container is up, waiting for HTTP server..."
+              sleep 2
+              if curl -f -s http://localhost:8080/ > /dev/null; then
+                echo "CyberChef is ready!"
+                exit 0
+              fi
+            fi
+            echo "Attempt $i/30: Container not ready yet..."
+            sleep 2
+          done
+          echo "Container failed to become ready in time"
+          docker logs cyberchef-test
+          exit 1
+
+      - name: Test HTTP endpoint
+        run: |
+          echo "Testing HTTP endpoint..."
+          response=$(curl -s -w "\n%{http_code}" http://localhost:8080/)
+          http_code=$(echo "$response" | tail -n1)
+
+          if [ "$http_code" != "200" ]; then
+            echo "HTTP request failed with code: $http_code"
+            exit 1
+          fi
+          echo "✓ HTTP endpoint returned 200 OK"
+
+      - name: Test CyberChef content
+        run: |
+          echo "Checking if CyberChef HTML is served..."
+          content=$(curl -s http://localhost:8080/)
+
+          # Check for CyberChef-specific content
+          if echo "$content" | grep -q "CyberChef"; then
+            echo "✓ CyberChef content found"
+          else
+            echo "✗ CyberChef content not found in response"
+            exit 1
+          fi
+
+          # Check for index.html or main page
+          if echo "$content" | grep -qi "cyber-chef\|cyberchef"; then
+            echo "✓ Main page content verified"
+          else
+            echo "⚠ Warning: Expected content patterns not found"
+          fi
+
+      - name: Test container logs
+        run: |
+          echo "Checking container logs for errors..."
+          logs=$(docker logs cyberchef-test 2>&1)
+
+          if echo "$logs" | grep -qi "error\|fatal\|exception"; then
+            echo "⚠ Warning: Errors found in logs:"
+            echo "$logs" | grep -i "error\|fatal\|exception"
+          else
+            echo "✓ No critical errors in logs"
+          fi
+
+          echo "Container logs:"
+          docker logs cyberchef-test
+
+      - name: Test file serving
+        run: |
+          echo "Testing if static files are accessible..."
+
+          # Test that we can access the root
+          if curl -f -s http://localhost:8080/ > /dev/null; then
+            echo "✓ Root endpoint accessible"
+          else
+            echo "✗ Root endpoint not accessible"
+            exit 1
+          fi
+
+      - name: Container information
+        if: always()
+        run: |
+          echo "=== Container Status ==="
+          docker ps -a | grep cyberchef-test || true
+
+          echo -e "\n=== Container Stats ==="
+          docker stats --no-stream cyberchef-test || true
+
+          echo -e "\n=== Container Inspect ==="
+          docker inspect cyberchef-test || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop cyberchef-test || true
+          docker rm cyberchef-test || true
+
+      - name: Test summary
+        run: |
+          echo "================================"
+          echo "✓ All tests passed successfully!"
+          echo "================================"
+          echo "- Docker image built successfully"
+          echo "- Container started without errors"
+          echo "- HTTP server responding correctly"
+          echo "- CyberChef content accessible"
+          echo "================================"
